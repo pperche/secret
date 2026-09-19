@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYSTEM ACCESS</title>
+<style>
+  :root{
+    --green: #33ff66;
+    --green-dim: #1a8f3c;
+    --bg: #050805;
+    --red: #ff4444;
+    --amber: #ffb000;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--bg);
+    color:var(--green);
+    font-family:'Courier New', Courier, monospace;
+    min-height:100vh;
+  }
+  body{
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
+  }
+  #screen{
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 20px 120px 20px;
+    min-height: 100vh;
+  }
+  .crt-flicker{
+    animation: flicker 6s infinite;
+  }
+  @keyframes flicker{
+    0%,100%{opacity:1;}
+    92%{opacity:1;}
+    93%{opacity:0.92;}
+    94%{opacity:1;}
+  }
+  #output{
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 16px;
+    line-height: 1.6;
+    text-shadow: 0 0 5px rgba(51,255,102,0.6);
+  }
+  .line{ margin: 0 0 4px 0; opacity:0; animation: fadeIn 0.15s forwards; }
+  @keyframes fadeIn{ to{opacity:1;} }
+  .prompt-line{ color: var(--green); }
+  .system-line{ color: var(--green); }
+  .error-line{ color: var(--red); }
+  .success-line{ color: var(--amber); }
+  .dim-line{ color: var(--green-dim); }
+  #input-row{
+    display:flex;
+    align-items:center;
+    font-size:16px;
+    margin-top: 8px;
+  }
+  #prompt-symbol{ margin-right:8px; }
+  #cmd-input{
+    flex:1;
+    background:transparent;
+    border:none;
+    outline:none;
+    color: var(--green);
+    font-family:'Courier New', Courier, monospace;
+    font-size:16px;
+    text-shadow: 0 0 5px rgba(51,255,102,0.6);
+    caret-color: var(--green);
+  }
+  ::selection{ background: var(--green); color:#000; }
+  a{ color: var(--amber); }
+
+  /* Fragment QR fragments panel */
+  .qr-frag-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    max-width: 420px;
+    margin: 16px 0;
+  }
+  .qr-frag-grid img{
+    width:100%;
+    border: 1px dashed var(--green-dim);
+    background:#000;
+  }
+  .btn{
+    display:inline-block;
+    margin-top:10px;
+    padding:8px 14px;
+    border:1px solid var(--green);
+    color:var(--green);
+    background:transparent;
+    cursor:pointer;
+    font-family:inherit;
+    font-size:14px;
+    text-decoration:none;
+  }
+  .btn:hover{ background: var(--green); color:#000; }
+
+  @media (max-width: 600px){
+    #output{ font-size:14px; }
+    #cmd-input{ font-size:14px; }
+  }
+</style>
+</head>
+<body>
+<div id="screen" class="crt-flicker">
+  <div id="output"></div>
+  <div id="input-row">
+    <span id="prompt-symbol">&gt;</span>
+    <input type="text" id="cmd-input" autocomplete="off" autofocus spellcheck="false">
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIGURATION DU JEU
+   ========================================================= */
+
+const EXPECTED_NAME = "CLARA";
+const SECURITY_WORD = "CHERCHER";
+
+/*
+  STRUCTURE DES 6 SOUVENIRS
+  --------------------------------
+  id          : identifiant interne (ne pas toucher)
+  dates       : tableau d'UNE OU PLUSIEURS dates acceptées avec SEARCH pour ce souvenir
+                (ex: ["24/08/2024", "22/08/2025"] si l'événement peut être cherché via l'une
+                ou l'autre date)
+  description : ce qui s'affiche quand elle tape SEARCH <une des dates>. Ne doit JAMAIS
+                nommer directement le lieu — juste de quoi le deviner.
+  answers     : réponses acceptées pour ACCESS (le lieu deviné), en minuscules, variantes possibles
+*/
+const MEMORIES = [
+  {
+    id: "paris",
+    dates: ["14/02/2026"],
+    description: "indice : quique ouince",
+    answers: ["paris"]
+  },
+  {
+    id: "vannes",
+    dates: ["27/12/2024"],
+    description: "indice : Voisinage",
+    answers: ["vannes"]
+  },
+  {
+    id: "belle-ile",
+    dates: ["11/08/2026"],
+    description: "indice : Dora",
+    answers: ["belle ile", "belle-ile", "belle ile en mer", "belle-ile-en-mer"]
+  },
+  {
+    id: "parc-asterix",
+    dates: ["12/08/2024"],
+    description: "indice : gift",
+    answers: ["parc asterix", "asterix"]
+  },
+  {
+    id: "vnb-fest",
+    dates: ["24/08/2024", "22/08/2025"],
+    description: "indice : brasseries",
+    answers: ["vnb fest", "vnb"]
+  },
+  {
+    id: "18-ans",
+    dates: ["26/05/2024"],
+    description: "indice : 1ere rencontre",
+    answers: ["18 ans", "mes 18 ans", "anniversaire", "18 ans Clara"]
+  }
+];
+
+/*
+  QUIZ FINAL
+*/
+const QUIZ = [
+  { q: "Où était nos lieux de rendez-vous ?", answers: ["jardin", "parc", "jardin des plantes", "parc des plantes", "jardin du parc"] },
+  { q: "Quel était le premier vrai cadeau que je t'ai offert ?", answers: ["sac", "un sac", "un sac vert", "sac vert"] },
+  { q: "Quel est notre surnom ?", answers: ["petit chat", "petit-chat"] },
+  { q: "Dans quelle ville suis-je né ?", answers: ["Saint-Herblain", "Saint Herblain"] },
+  { q: "Comment s'appelait mon école maternelle ?", answers: ["Charles Perrault"] },
+  { q: "Comment s'appelait ma première amoureuse ?", answers: ["Angèle", "Angele"] },
+  { q: "Quel est le prénom de mon papy ?", answers: ["Jean-Yves", "Jean Yves"] },
+  { q: "Quel est le prénom de ma mamie ?", answers: ["Marie-Annick", "Marie Annick"] },
+  { q: "Combien de couscous as-tu ?", answers: ["2", "deux"] }
+];
+
+/* =========================================================
+   MOTEUR DU JEU
+   ========================================================= */
+
+const output = document.getElementById('output');
+const input = document.getElementById('cmd-input');
+
+let state = {
+  stage: "ASK_NAME", // ASK_NAME -> ASK_SECURITY -> MAIN
+  consultedDates: new Set(),   // ids des souvenirs déjà cherchés via SEARCH (juste pour affichage)
+  solvedMemories: new Set(),   // ids des souvenirs correctement devinés via ACCESS
+  quizStep: -1,
+  quizPassed: false,
+  qrUnlocked: false,
+
+  // Session ACCESS pas-à-pas
+  accessActive: false,
+  accessAskedId: null
+};
+
+function normalize(str){
+  return str
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function printLine(text, cls){
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || '');
+  div.textContent = text;
+  output.appendChild(div);
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+function printBlank(){
+  printLine("");
+}
+
+function boot(){
+  const bootLines = [
+    "INITIALISATION DU SYSTEME...",
+    "CHARGEMENT DES MODULES DE SECURITE...",
+    "CONNEXION ETABLIE.",
+    "",
+    "=================================",
+    "   SYSTEM ACCESS — TERMINAL v1.0",
+    "=================================",
+    "",
+    "Identification requise.",
+    "Veuillez entrer votre prénom :"
+  ];
+  let i = 0;
+  const interval = setInterval(() => {
+    if(i < bootLines.length){
+      printLine(bootLines[i], i < 8 ? "dim-line" : "system-line");
+      i++;
+    } else {
+      clearInterval(interval);
+    }
+  }, 90);
+}
+
+function handleCommand(raw){
+  const cmdRaw = raw.trim();
+  if(cmdRaw.length === 0) return;
+
+  printLine("> " + cmdRaw, "prompt-line");
+
+  const cmd = normalize(cmdRaw);
+
+  switch(state.stage){
+    case "ASK_NAME":
+      handleAskName(cmd);
+      break;
+    case "ASK_SECURITY":
+      handleAskSecurity(cmd);
+      break;
+    case "MAIN":
+      handleMainCommand(cmd, cmdRaw);
+      break;
+  }
+}
+
+function handleAskName(cmd){
+  if(cmd === normalize(EXPECTED_NAME)){
+    printBlank();
+    printLine("Identité reconnue : " + EXPECTED_NAME.toUpperCase(), "success-line");
+    printLine("Une seconde vérification est requise pour continuer.", "system-line");
+    printLine("Cette information vous a déjà été communiquée...", "dim-line");
+    printBlank();
+    state.stage = "ASK_SECURITY";
+  } else {
+    printLine("Prénom non reconnu. Réessayez.", "error-line");
+  }
+}
+
+function handleAskSecurity(cmd){
+  if(cmd === normalize(SECURITY_WORD)){
+    printBlank();
+    printLine("VERIFICATION REUSSIE.", "success-line");
+    printLine("Vous aviez déjà la réponse depuis le début.", "system-line");
+    printBlank();
+    printLine("Accès au système principal accordé.", "success-line");
+    printBlank();
+    showHelp();
+    state.stage = "MAIN";
+  } else {
+    printLine("Code incorrect. Indice : cette instruction figurait dans un document que vous avez déjà lu.", "error-line");
+  }
+}
+
+function showHelp(){
+  printLine("Commandes disponibles :", "system-line");
+  printLine("  MEMORY   — consulter les souvenirs enregistrés");
+  printLine("  SEARCH   — rechercher une information (ex: SEARCH 14/02/2026)");
+  printLine("  ACCESS   — tenter d'accéder aux données protégées");
+  printLine("  HELP     — afficher cette aide");
+  printBlank();
+}
+
+function handleMainCommand(cmd, cmdRaw){
+  // Priorité 1 : session ACCESS en cours -> tout ce qui est tapé est une réponse
+  if(state.accessActive){
+    handleAccessAnswerInput(cmd, cmdRaw);
+    return;
+  }
+
+  // Priorité 2 : quiz en cours
+  if(state.quizStep >= 0 && !state.quizPassed){
+    handleQuizAnswer(cmdRaw);
+    return;
+  }
+
+  if(cmd === "help"){ showHelp(); return; }
+  if(cmd === "memory"){ showMemoryList(); return; }
+
+  if(cmd.startsWith("search")){
+    const query = cmd.replace(/^search\s*/, "").trim();
+    handleSearch(query);
+    return;
+  }
+
+  if(cmd === "access"){ handleAccessStart(); return; }
+
+  if(cmd === "quiz"){
+    if(state.quizPassed){
+      printLine("Quiz déjà validé. Tapez QR pour continuer.", "dim-line");
+      return;
+    }
+    if(state.solvedMemories.size < MEMORIES.length){
+      printLine("Accès refusé. Les six souvenirs doivent d'abord être restaurés (voir ACCESS).", "error-line");
+      return;
+    }
+    startQuiz();
+    return;
+  }
+
+  if(cmd === "qr"){
+    if(!state.quizPassed){
+      printLine("Accès refusé. La commande QUIZ doit être complétée avant.", "error-line");
+      return;
+    }
+    showQRFragments();
+    return;
+  }
+
+  printLine("Commande inconnue. Tapez HELP pour la liste des commandes.", "error-line");
+}
+
+function showMemoryList(){
+  printLine("SIX SOUVENIRS DETECTES DANS LE SYSTEME.", "system-line");
+  printLine("Dates associées (contenu verrouillé) :", "system-line");
+  printBlank();
+  MEMORIES.forEach((m, idx) => {
+    const solved = state.solvedMemories.has(m.id);
+    const consulted = state.consultedDates.has(m.id);
+    const status = solved ? "[RESTAURÉ]" : (consulted ? "[CONSULTÉ]" : "[VERROUILLÉ]");
+    printLine(`${idx + 1}. ${m.dates.join(" ou ")}  ${status}`, solved ? "success-line" : "dim-line");
+  });
+  printBlank();
+  printLine("Utilisez SEARCH pour consulter plus de détails.", "dim-line");
+  printLine("Utilisez ACCESS quand vous pensez avoir identifié les six souvenirs.", "dim-line");
+  printBlank();
+}
+
+function handleSearch(query){
+  if(!query){
+    printLine("Mauvais Usage : SEARCH ", "error-line");
+    return;
+  }
+  const normQuery = normalize(query);
+  // Cherche parmi TOUTES les dates de TOUS les souvenirs
+  const match = MEMORIES.find(m => m.dates.some(d => normalize(d) === normQuery));
+  if(match){
+    printLine(`RESULTAT — ${query} :`, "system-line");
+    printLine(match.description);
+    state.consultedDates.add(match.id);
+    printBlank();
+  } else {
+    printLine("Aucun résultat pour cette recherche.", "error-line");
+  }
+}
+
+/* =========================================================
+   ACCESS — session pas-à-pas : une question à la fois,
+   feedback immédiat, progression conservée entre les tentatives
+   ========================================================= */
+
+function handleAccessStart(){
+  if(state.solvedMemories.size >= MEMORIES.length){
+    printLine("Tous les souvenirs sont déjà restaurés. Tapez QUIZ pour continuer.", "dim-line");
+    return;
+  }
+
+  printLine("ACCES AUX DONNEES PROTEGEES.", "system-line");
+  printLine(`Le système va demander vos réponses une par une (${state.solvedMemories.size}/${MEMORIES.length} déjà validées).`, "system-line");
+  printLine("Tapez QUIT pour interrompre la session à tout moment (progrès conservés).", "dim-line");
+  printBlank();
+
+  state.accessActive = true;
+  askNextAccessQuestion();
+}
+
+function askNextAccessQuestion(){
+  const next = MEMORIES.find(m => !state.solvedMemories.has(m.id));
+
+  if(!next){
+    printBlank();
+    printLine("TOUS LES SOUVENIRS ONT ETE RESTAURES.", "success-line");
+    printLine("Nouvelles fonctions débloquées : QUIZ, QR", "success-line");
+    printBlank();
+    state.accessActive = false;
+    state.accessAskedId = null;
+    return;
+  }
+
+  state.accessAskedId = next.id;
+  const progress = state.solvedMemories.size;
+  printLine(`[${progress}/${MEMORIES.length}] Souvenir du ${next.dates.join(" ou ")} : quel est ce lieu/événement ?`, "system-line");
+}
+
+function handleAccessAnswerInput(cmdNormalized, cmdRaw){
+  if(cmdNormalized === "quit" || cmdNormalized === "stop" || cmdNormalized === "annuler"){
+    printLine("Session ACCESS interrompue. Vos progrès sont conservés.", "dim-line");
+    printBlank();
+    state.accessActive = false;
+    state.accessAskedId = null;
+    return;
+  }
+
+  const current = MEMORIES.find(m => m.id === state.accessAskedId);
+  if(!current){
+    state.accessActive = false;
+    return;
+  }
+
+  const given = normalize(cmdRaw);
+  const isCorrect = current.answers.some(a => normalize(a) === given);
+
+  if(isCorrect){
+    state.solvedMemories.add(current.id);
+    printLine("BONNE REPONSE.", "success-line");
+  } else {
+    printLine("MAUVAISE REPONSE. Ce souvenir reste verrouillé, on continue.", "error-line");
+  }
+  printBlank();
+
+  askNextAccessQuestion();
+}
+
+/* =========================================================
+   QUIZ
+   ========================================================= */
+
+function startQuiz(){
+  printLine("DEMARRAGE DU QUIZ — Votre histoire.", "system-line");
+  printLine("Répondez à chaque question pour prouver que ces souvenirs sont bien les vôtres.", "dim-line");
+  printBlank();
+  state.quizStep = 0;
+  askQuizQuestion();
+}
+
+function askQuizQuestion(){
+  const q = QUIZ[state.quizStep];
+  printLine(`Question ${state.quizStep + 1}/${QUIZ.length} : ${q.q}`, "system-line");
+}
+
+function handleQuizAnswer(cmdRaw){
+  const given = normalize(cmdRaw);
+  const q = QUIZ[state.quizStep];
+  const correct = q.answers.some(a => normalize(a) === given);
+
+  if(correct){
+    printLine("Correct.", "success-line");
+    state.quizStep++;
+    if(state.quizStep >= QUIZ.length){
+      printBlank();
+      printLine("DERNIERE VERIFICATION TERMINEE.", "success-line");
+      printLine("Vous pouvez maintenant utiliser la commande QR.", "success-line");
+      printBlank();
+      state.quizPassed = true;
+      state.quizStep = -1;
+    } else {
+      printBlank();
+      askQuizQuestion();
+    }
+  } else {
+    printLine("Réponse incorrecte. Réessayez.", "error-line");
+  }
+}
+
+/* =========================================================
+   QR
+   ========================================================= */
+
+function showQRFragments(){
+  if(state.qrUnlocked){
+    printLine("Fragments déjà affichés plus haut.", "dim-line");
+    return;
+  }
+  state.qrUnlocked = true;
+  printLine("QUATRE FRAGMENTS DETECTES.", "system-line");
+  printLine("Ces fragments peuvent être assemblés pour révéler quelque chose.", "dim-line");
+  printLine("(Imprimez cette page ou les images, découpez, puis assemblez les 4 morceaux.)", "dim-line");
+  printBlank();
+
+  const grid = document.createElement('div');
+  grid.className = 'qr-frag-grid';
+  grid.id = 'qr-frag-grid';
+  output.appendChild(grid);
+
+  const dlWrap = document.createElement('div');
+  dlWrap.innerHTML = '<a class="btn" id="download-fragments" href="#">Télécharger les 4 fragments (image unique à imprimer)</a>';
+  output.appendChild(dlWrap);
+
+  printBlank();
+
+  generateAndSliceQR();
+}
+
+/* =========================================================
+   GESTION DE L'INPUT
+   ========================================================= */
+
+input.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    const val = input.value;
+    input.value = '';
+    handleCommand(val);
+  }
+});
+
+document.addEventListener('click', () => input.focus());
+
+boot();
+</script>
+
+<!-- QRCode.js pour générer le QR code côté client -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+/* =========================================================
+   GENERATION + DECOUPAGE DU QR CODE EN 4 FRAGMENTS
+   ========================================================= */
+
+const FINAL_URL = "http://127.0.0.1:5500/reward.html";
+
+function generateAndSliceQR(){
+  const hiddenDiv = document.createElement('div');
+  hiddenDiv.style.display = 'none';
+  document.body.appendChild(hiddenDiv);
+
+  new QRCode(hiddenDiv, {
+    text: FINAL_URL,
+    width: 400,
+    height: 400,
+    colorDark: "#000000",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.H
+  });
+
+  setTimeout(() => {
+    const sourceCanvas = hiddenDiv.querySelector('canvas');
+    if(!sourceCanvas){
+      printLine("Erreur : génération du QR code impossible (vérifiez la connexion internet).", "error-line");
+      return;
+    }
+    sliceCanvasIntoFour(sourceCanvas);
+    document.body.removeChild(hiddenDiv);
+  }, 200);
+}
+
+function sliceCanvasIntoFour(sourceCanvas){
+  const size = sourceCanvas.width;
+  const half = size / 2;
+  const grid = document.getElementById('qr-frag-grid');
+  const fragmentCanvases = [];
+
+  const coords = [
+    {sx:0, sy:0},
+    {sx:half, sy:0},
+    {sx:0, sy:half},
+    {sx:half, sy:half}
+  ];
+
+  coords.forEach((c, idx) => {
+    const frag = document.createElement('canvas');
+    frag.width = half;
+    frag.height = half;
+    const ctx = frag.getContext('2d');
+    ctx.drawImage(sourceCanvas, c.sx, c.sy, half, half, 0, 0, half, half);
+    fragmentCanvases.push(frag);
+
+    const img = document.createElement('img');
+    img.src = frag.toDataURL();
+    img.alt = "Fragment " + (idx+1);
+    grid.appendChild(img);
+  });
+
+  const dlBtn = document.getElementById('download-fragments');
+  dlBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    downloadPrintableSheet(fragmentCanvases, half);
+  });
+}
+
+function downloadPrintableSheet(fragmentCanvases, fragSize){
+  const margin = 40;
+  const gap = 60;
+  const sheet = document.createElement('canvas');
+  sheet.width = margin * 2 + fragSize * 2 + gap;
+  sheet.height = margin * 2 + fragSize * 2 + gap + 60;
+  const ctx = sheet.getContext('2d');
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, sheet.width, sheet.height);
+
+  const positions = [
+    {x: margin, y: margin},
+    {x: margin + fragSize + gap, y: margin},
+    {x: margin, y: margin + fragSize + gap},
+    {x: margin + fragSize + gap, y: margin + fragSize + gap}
+  ];
+
+  fragmentCanvases.forEach((frag, idx) => {
+    const pos = positions[idx];
+    ctx.strokeStyle = "#999999";
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(pos.x - 4, pos.y - 4, fragSize + 8, fragSize + 8);
+    ctx.drawImage(frag, pos.x, pos.y);
+
+    ctx.fillStyle = "#000000";
+    ctx.font = "16px monospace";
+    ctx.setLineDash([]);
+    ctx.fillText("Fragment " + (idx + 1), pos.x, pos.y - 10);
+  });
+
+  ctx.fillStyle = "#000000";
+  ctx.font = "14px monospace";
+  ctx.fillText("Découpez les 4 fragments le long des pointillés, puis assemblez-les dans l'ordre 1-2 / 3-4.", margin, sheet.height - 20);
+
+  const link = document.createElement('a');
+  link.download = 'qr-fragments-a-imprimer.png';
+  link.href = sheet.toDataURL('image/png');
+  link.click();
+}
+</script>
+</body>
+</html>

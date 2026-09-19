@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Une question...</title>
+<style>
+  :root{
+    --pink: #ff6fa5;
+    --pink-soft: #ffd6e7;
+    --bg1: #2b0a1f;
+    --bg2: #4a1030;
+    --white: #fff8fb;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0;
+    padding:0;
+    height:100%;
+    width:100%;
+    overflow:hidden; /* le bouton peut aller partout, on évite les scrollbars parasites */
+    background: radial-gradient(circle at 50% 20%, var(--bg2), var(--bg1) 70%);
+    font-family: 'Georgia', 'Segoe UI', serif;
+    color: var(--white);
+  }
+  body{
+    position:relative;
+  }
+
+  /* Coeurs flottants en arrière-plan */
+  .heart{
+    position:fixed;
+    top: 100%;
+    font-size: 20px;
+    color: var(--pink);
+    opacity: 0.55;
+    pointer-events:none;
+    animation: floatUp linear forwards;
+    user-select:none;
+    z-index: 1;
+  }
+  @keyframes floatUp{
+    0%{ transform: translateY(0) rotate(0deg); opacity: 0; }
+    10%{ opacity: 0.6; }
+    100%{ transform: translateY(-110vh) rotate(25deg); opacity: 0; }
+  }
+
+  .content{
+    position:relative;
+    z-index: 2;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 60px 24px 0 24px;
+    text-align:center;
+  }
+
+  .intro{
+    font-size: 0.95em;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--pink-soft);
+    opacity: 0.85;
+    margin-bottom: 18px;
+    animation: appear 1s ease both;
+  }
+
+  h1{
+    font-size: clamp(1.6em, 5vw, 2.4em);
+    line-height: 1.4;
+    margin: 0 0 10px 0;
+    text-shadow: 0 0 25px rgba(255,111,165,0.5);
+    animation: appear 1.2s ease both;
+  }
+
+  p.sub{
+    font-size: 1.05em;
+    opacity: 0.85;
+    margin-bottom: 20px;
+    animation: appear 1.4s ease both;
+  }
+
+  @keyframes appear{
+    from{ opacity:0; transform: translateY(14px); }
+    to{ opacity:1; transform: translateY(0); }
+  }
+
+  /* Le bouton est fixed sur toute la fenêtre, donc il peut aller n'importe où */
+  #yes-btn{
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 18px 40px;
+    font-size: 1.15em;
+    font-family: inherit;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #4a0f28;
+    background: linear-gradient(135deg, #ffdce9, #ff9dc0);
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(255,111,165,0.45);
+    white-space: nowrap;
+    user-select: none;
+    z-index: 5;
+    transition: box-shadow 0.2s ease;
+  }
+  #yes-btn:hover{
+    box-shadow: 0 10px 30px rgba(255,111,165,0.65);
+  }
+  #yes-btn.teleporting{
+    animation: teleportFlash 0.18s ease;
+  }
+  @keyframes teleportFlash{
+    0%{ opacity: 1; filter: brightness(1); }
+    40%{ opacity: 0.15; filter: brightness(2); }
+    100%{ opacity: 1; filter: brightness(1); }
+  }
+  #yes-btn.caught{
+    animation: pulse 0.6s ease;
+  }
+  @keyframes pulse{
+    0%{ transform: translate(-50%,-50%) scale(1); }
+    40%{ transform: translate(-50%,-50%) scale(1.2); }
+    100%{ transform: translate(-50%,-50%) scale(1); }
+  }
+
+  .hint{
+    margin-top: 8px;
+    font-size: 0.85em;
+    opacity: 0.6;
+    min-height: 1.2em;
+    transition: opacity 0.3s ease;
+  }
+
+  .counter{
+    margin-top: 6px;
+    font-size: 0.75em;
+    opacity: 0.35;
+    letter-spacing: 1px;
+  }
+
+  /* Écran final */
+  #final-screen{
+    display:none;
+    animation: appear 0.8s ease both;
+  }
+  #final-screen h1{
+    color: var(--pink-soft);
+  }
+  .emoji-row{
+    font-size: 2em;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="content" id="question-screen">
+  <div class="intro">Accès total accordé</div>
+  <h1>Six souvenirs restaurés.<br>Une histoire confirmée.<br>Un code assemblé.</h1>
+  <p class="sub">Il ne reste qu'une dernière question à valider...</p>
+  <div class="hint" id="hint-text">essaie de cliquer sur le bouton...</div>
+  <div class="counter" id="counter-text"></div>
+</div>
+
+<button id="yes-btn">Oui, j'accepte 💕</button>
+
+<div class="content" id="final-screen">
+  <div class="intro">Vérification finale réussie</div>
+  <h1>Elle a dit oui.</h1>
+  <p class="sub">
+    <!-- PERSONNALISE CE TEXTE : nom du restaurant, date, heure -->
+    Rendez-vous est pris. Un restaurant, une table, et nous deux.
+  </p>
+  <div class="emoji-row">🍷🕯️💌</div>
+</div>
+
+<script>
+/* =========================================================
+   COEURS FLOTTANTS EN FOND
+   ========================================================= */
+function spawnHeart(){
+  const heart = document.createElement('div');
+  heart.className = 'heart';
+  heart.textContent = ['♥','💗','💕','♡'][Math.floor(Math.random()*4)];
+  heart.style.left = Math.random() * 100 + 'vw';
+  heart.style.fontSize = (14 + Math.random() * 18) + 'px';
+  const duration = 6 + Math.random() * 6;
+  heart.style.animationDuration = duration + 's';
+  document.body.appendChild(heart);
+  setTimeout(() => heart.remove(), duration * 1000);
+}
+setInterval(spawnHeart, 500);
+
+/* =========================================================
+   BOUTON "OUI" QUI TELEPORTE PARTOUT SUR L'ECRAN
+   ========================================================= */
+const btn = document.getElementById('yes-btn');
+const hint = document.getElementById('hint-text');
+const counterText = document.getElementById('counter-text');
+
+// Nombre de téléportations nécessaires avant que le bouton se laisse attraper.
+// Chaque esquive redémarre un petit délai de "cooldown" avant de pouvoir refuir,
+// pour éviter un spam de téléportations en une fraction de seconde.
+// Avec ~25-35 esquives et un peu de recherche à chaque fois, on vise 5+ minutes.
+const REQUIRED_ESCAPES = 30;
+const MIN_TRIGGER_DISTANCE = 55; // distance en dessous de laquelle le bouton fuit (proche d'un vrai hover)
+const TELEPORT_COOLDOWN_MS = 250; // anti-spam entre deux téléportations
+
+let escapeCount = 0;
+let caught = false;
+let lastTeleportTime = 0;
+
+const hints = [
+  "essaie de cliquer sur le bouton...",
+  "il n'a pas l'air décidé 👀",
+  "il se cache un peu partout maintenant",
+  "il commence à peine à faiblir",
+  "encore du chemin...",
+  "il fatigue, doucement",
+  "presque à bout de souffle",
+  "il n'a presque plus la force de fuir..."
+];
+
+function updateHint(){
+  const progress = escapeCount / REQUIRED_ESCAPES;
+  const idx = Math.min(hints.length - 1, Math.floor(progress * hints.length));
+  hint.textContent = hints[idx];
+  counterText.textContent = `tentatives : ${escapeCount}`;
+}
+
+function getButtonRect(){
+  return btn.getBoundingClientRect();
+}
+
+function distanceFromMouseToButtonCenter(mouseX, mouseY){
+  const rect = getButtonRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dx = cx - mouseX;
+  const dy = cy - mouseY;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function randomPositionFarFrom(mouseX, mouseY){
+  const rect = getButtonRect();
+  const margin = 20;
+  const maxLeft = window.innerWidth - rect.width - margin;
+  const maxTop = window.innerHeight - rect.height - margin;
+
+  let bestX = margin, bestY = margin, bestDist = -1;
+
+  // Essaie plusieurs positions aléatoires et garde celle la plus loin de la souris
+  // (garantit un vrai "saut à l'autre bout de l'écran" plutôt qu'un hasard qui pourrait
+  // retomber près du curseur)
+  for(let i = 0; i < 12; i++){
+    const x = margin + Math.random() * Math.max(1, (maxLeft - margin));
+    const y = margin + Math.random() * Math.max(1, (maxTop - margin));
+    const dx = (x + rect.width/2) - mouseX;
+    const dy = (y + rect.height/2) - mouseY;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if(d > bestDist){
+      bestDist = d;
+      bestX = x;
+      bestY = y;
+    }
+  }
+
+  return { x: bestX, y: bestY };
+}
+
+function teleportButton(mouseX, mouseY){
+  const pos = randomPositionFarFrom(mouseX, mouseY);
+  btn.style.left = pos.x + 'px';
+  btn.style.top = pos.y + 'px';
+  btn.style.transform = 'none'; // on désactive le centrage translate() une fois positionné en absolu
+
+  btn.classList.remove('teleporting');
+  void btn.offsetWidth; // force le reflow pour rejouer l'animation
+  btn.classList.add('teleporting');
+}
+
+function tryEscape(mouseX, mouseY){
+  if(caught) return;
+
+  const now = Date.now();
+  if(now - lastTeleportTime < TELEPORT_COOLDOWN_MS) return;
+
+  const distance = distanceFromMouseToButtonCenter(mouseX, mouseY);
+  if(distance < MIN_TRIGGER_DISTANCE){
+    escapeCount++;
+    lastTeleportTime = now;
+    updateHint();
+
+    if(escapeCount >= REQUIRED_ESCAPES){
+      catchButton();
+      return;
+    }
+
+    teleportButton(mouseX, mouseY);
+  }
+}
+
+function catchButton(){
+  caught = true;
+  btn.classList.add('caught');
+  hint.textContent = "il n'a plus la force de fuir... clique-le ! 💗";
+  counterText.textContent = "";
+}
+
+document.addEventListener('mousemove', (e) => {
+  tryEscape(e.clientX, e.clientY);
+});
+
+document.addEventListener('touchstart', (e) => {
+  const touch = e.touches[0];
+  tryEscape(touch.clientX, touch.clientY);
+}, { passive: true });
+
+// Sur mobile, le "hover" n'existe pas : on ajoute aussi un mouvement continu
+// pendant qu'un doigt glisse sur l'écran, pour garder le même effet de fuite.
+document.addEventListener('touchmove', (e) => {
+  const touch = e.touches[0];
+  tryEscape(touch.clientX, touch.clientY);
+}, { passive: true });
+
+btn.addEventListener('click', () => {
+  if(!caught){
+    // Sécurité : si jamais un clic passe avant la fin naturelle, on ignore et on fait fuir une dernière fois
+    teleportButton(window.innerWidth / 2, window.innerHeight / 2);
+    return;
+  }
+  showFinalScreen();
+});
+
+function showFinalScreen(){
+  document.getElementById('question-screen').style.display = 'none';
+  btn.style.display = 'none';
+  document.getElementById('final-screen').style.display = 'block';
+}
+
+updateHint();
+</script>
+</body>
+</html>
